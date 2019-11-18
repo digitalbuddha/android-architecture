@@ -16,13 +16,17 @@
 package com.example.android.architecture.blueprints.todoapp.data.source
 
 import androidx.annotation.VisibleForTesting
-import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.map
 import com.example.android.architecture.blueprints.todoapp.data.Result
 import com.example.android.architecture.blueprints.todoapp.data.Result.Error
 import com.example.android.architecture.blueprints.todoapp.data.Result.Success
 import com.example.android.architecture.blueprints.todoapp.data.Task
+import com.nytimes.android.external.store4.ResponseOrigin
+import com.nytimes.android.external.store4.StoreResponse
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import java.util.LinkedHashMap
 
@@ -41,22 +45,19 @@ class FakeRepository : TasksRepository {
         shouldReturnError = value
     }
 
-    override suspend fun refreshTasks() {
-        observableTasks.value = getTasks()
+      fun refreshTasks(): Flow<StoreResponse<Result<List<Task>>>>
+      = flow {  emit(getTasks())}.map { StoreResponse.Data(it, origin = ResponseOrigin.Fetcher) }
+
+
+
+
+    override fun observeTasks(shouldRefresh: Boolean): Flow<Result<List<Task>>> {
+      return refreshTasks().filter { it  !is StoreResponse.Loading}.map { it.requireData() }
     }
 
-    override suspend fun refreshTask(taskId: String) {
-        refreshTasks()
-    }
-
-    override fun observeTasks(): LiveData<Result<List<Task>>> {
+    override fun observeTask(taskId: String, shouldRefresh: Boolean): Flow<Result<Task>> {
         runBlocking { refreshTasks() }
-        return observableTasks
-    }
-
-    override fun observeTask(taskId: String): LiveData<Result<Task>> {
-        runBlocking { refreshTasks() }
-        return observableTasks.map { tasks ->
+        return refreshTasks().filter { it  !is StoreResponse.Loading}.map { it.requireData() }.map { tasks ->
             when (tasks) {
                 is Result.Loading -> Result.Loading
                 is Error -> Error(tasks.exception)
